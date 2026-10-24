@@ -1,4 +1,4 @@
-const SHELL='tcclyn-shell-86bd03f0', AUDIO='tcclyn-audio-v1';
+const SHELL='tcclyn-shell-d197227d', AUDIO='tcclyn-audio-v2';
 const FILES=["./", "index.html", "cards.html", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(SHELL).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k.startsWith('tcclyn-shell-')&&k!==SHELL).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
