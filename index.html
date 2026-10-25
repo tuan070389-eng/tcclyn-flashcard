@@ -65,6 +65,12 @@ input[type=range]{width:100%;accent-color:var(--jade)}
 .cardv .ca.wait{background:none;border:1px dashed var(--line);color:var(--muted);font-size:13.5px}
 .cardv .peek{border:1px solid var(--line);background:none;border-radius:999px;padding:2px 10px;font-size:11.5px;letter-spacing:0;text-transform:none;font-weight:500;color:var(--ink)}
 .cardv .lab{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--jade);font-weight:600;margin-bottom:-4px}
+.sleep{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;font-size:13px;color:var(--muted)}
+.sleep .sl{white-space:nowrap}
+.sopts{display:flex;flex-wrap:wrap;gap:6px}
+.sopts button{border:1px solid var(--line);background:none;border-radius:999px;height:30px;padding:0 10px;font-size:12.5px;font-variant-numeric:tabular-nums}
+.sopts button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.sst{color:var(--jade);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .tip{font-size:12.5px;color:var(--muted);margin:14px 0 0}
 h2{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:24px 0 6px;font-weight:600}
 .list{display:flex;flex-direction:column}
@@ -100,6 +106,7 @@ h2{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute
       <button class="b" id="nextCh" aria-label="Chương sau">⏭</button>
     </div>
     <div class="speed" id="speed"></div>
+    <div class="sleep" role="group" aria-label="Hẹn giờ tắt"><span class="sl">Hẹn giờ tắt</span><div class="sopts" id="sopts"></div><span class="sst" id="sst"></span></div>
   </section>
   <p class="tip">Mỗi thẻ: nghe câu hỏi, có 3 giây im lặng để tự trả lời trong đầu, rồi mới nghe đáp án. Hết chương sẽ tự chuyển sang chương sau. Chế độ “Giọng thiết bị” đọc trực tiếp bằng giọng tiếng Việt có sẵn trên máy bạn, cần giữ trang mở khi nghe.</p>
 
@@ -151,9 +158,9 @@ $('fwd').onclick=()=>{if(mode==='tts')return jumpCard(1);mp3Jump(1)};
 $('prevCh').onclick=()=>{if(mode==='tts'){if(tIdx>3){tIdx=0}else if(ci>0){load(ci-1,false);tIdx=0}if(speaking){stopTts();speakNext()}else ttsUi();return}if(au.currentTime>5)au.currentTime=0;else if(ci>0)load(ci-1,!au.paused)};
 $('nextCh').onclick=()=>{if(ci>=TR.length-1)return;if(mode==='tts'){load(ci+1,false);tIdx=0;if(speaking){stopTts();speakNext()}else ttsUi();return}load(ci+1,!au.paused)};
 let last=0;
-au.ontimeupdate=()=>{if(mode==='tts')return;syncMp3();if(!seeking){$('bar').value=au.duration?au.currentTime/au.duration*1000:0}$('cur').textContent=fmt(au.currentTime);
+au.ontimeupdate=()=>{checkSleep();if(mode==='tts')return;syncMp3();if(!seeking){$('bar').value=au.duration?au.currentTime/au.duration*1000:0}$('cur').textContent=fmt(au.currentTime);
   if(Math.abs(au.currentTime-last)>4){last=au.currentTime;S.pos[ci]=au.currentTime;save()}};
-au.onended=()=>{S.done[ci]=1;S.pos[ci]=0;save();if(ci<TR.length-1)load(ci+1,true);else renderList()};
+au.onended=()=>{S.done[ci]=1;S.pos[ci]=0;save();if(sleepEnd){clearSleep('Đã tắt khi hết chương');if(ci<TR.length-1)load(ci+1,false);else renderList();return}if(ci<TR.length-1)load(ci+1,true);else renderList()};
 $('bar').oninput=()=>{if(mode==='tts'){const it=curItems();tIdx=Math.min(it.length-1,Math.floor($('bar').value/1000*it.length));ttsUi();return}seeking=true;$('cur').textContent=fmt($('bar').value/1000*(au.duration||0))};
 $('bar').onchange=()=>{if(mode==='tts'){if(speaking){stopTts();speakNext()}return}if(au.duration)au.currentTime=$('bar').value/1000*au.duration;syncMp3();seeking=false};
 (()=>{const box=$('speed');box.innerHTML='<label for="spd">Tốc độ</label><button id="spdDn" aria-label="Chậm hơn">−</button><input type="range" id="spd" min="0.5" max="2" step="0.05"><button id="spdUp" aria-label="Nhanh hơn">+</button><output id="spdV"></output><button id="spdReset">1.0×</button>';
@@ -216,6 +223,7 @@ function speakNext(first){
   if(!speaking)return;
   const it=curItems();
   if(tIdx>=it.length){S.done[ci]=1;S.tpos=S.tpos||{};S.tpos[ci]=0;save();
+    if(sleepEnd){speaking=false;clearSleep('Đã tắt khi hết chương');if(ci<TR.length-1){ci++;tIdx=0;load(ci,false)}ttsUi();renderList();return}
     if(ci<TR.length-1){ci++;tIdx=0;load(ci,false);}else{speaking=false;ttsUi();renderList();return}}
   const [t,p]=curItems()[tIdx];
   const u=new SpeechSynthesisUtterance(t);u.lang='vi-VN';const v=voices[$('voice').value];if(v)u.voice=v;u.rate=rate;
@@ -234,6 +242,26 @@ function setMode(m){mode=m;S.mode=m;save();
   $('back').textContent='◀ Thẻ';$('fwd').textContent='Thẻ ▶';
   if(m==='tts'){au.pause();tIdx=(S.tpos&&S.tpos[ci])||0;ttsUi()}else{speaking=false;stopTts();$('dur').textContent=fmt(TR[ci].sec);$('cur').textContent=fmt(au.currentTime);$('bar').value=au.duration?au.currentTime/au.duration*1000:0;$('play').textContent='▶';lastCard=-1;syncMp3()}}
 $('mMp3').onclick=()=>setMode('mp3');$('mTts').onclick=()=>setMode('tts');
+
+let sleepAt=0, sleepEnd=false, sleepMsg='';
+const FADE=20;
+function clearSleep(msg){if(msg){au.pause();$('play').textContent='▶';$('play').setAttribute('aria-label','Phát')}sleepAt=0;sleepEnd=false;sleepSel='off';try{au.volume=1}catch(e){}sleepMsg=msg||'';renderSleep()}
+function doSleep(){if(mode==='tts'){speaking=false;stopTts();ttsUi()}else au.pause();clearSleep('Đã tắt lúc '+new Date().toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}))}
+function checkSleep(){if(!sleepAt){return}const left=(sleepAt-Date.now())/1000;
+  if(left<=0){doSleep();return}
+  if(mode==='mp3'){try{au.volume=left<FADE?Math.max(0.05,left/FADE):1}catch(e){}}
+  $('sst').textContent='Tắt sau '+fmt(left)}
+function renderSleep(){const cur=sleepEnd?'end':sleepAt?String(sleepSel):'off';
+  [...$('sopts').children].forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===cur));
+  $('sst').textContent=sleepEnd?'Tắt khi hết chương này':sleepAt?'Tắt sau '+fmt((sleepAt-Date.now())/1000):sleepMsg}
+let sleepSel='off';
+[['off','Tắt'],['15','15 phút'],['30','30 phút'],['45','45 phút'],['60','60 phút'],['end','Hết chương']].forEach(([v,l])=>{
+  const b=document.createElement('button');b.dataset.v=v;b.textContent=l;
+  b.onclick=()=>{try{au.volume=1}catch(e){}sleepMsg='';sleepSel=v;
+    if(v==='off'){sleepAt=0;sleepEnd=false}else if(v==='end'){sleepAt=0;sleepEnd=true}else{sleepEnd=false;sleepAt=Date.now()+(+v)*60000}
+    renderSleep()};
+  $('sopts').appendChild(b)});
+setInterval(checkSleep,1000);renderSleep();
 load(ci,false);setMode(mode);if(mode==='mp3')showCard(0,false);
 </script>
 <script>
